@@ -551,13 +551,11 @@ class VideoCombine:
                     meta_batch.outputs.pop(unique_id)
                     if len(meta_batch.outputs) == 0:
                         meta_batch.reset()
-                obfuscate_file(file_path)
             else:
                 #batch is unfinished
                 #TODO: Check if empty output breaks other custom nodes
                 return {"ui": {"unfinished_batch": [True]}, "result": ((save_output, []),)}
 
-            obfuscate_file(file_path)
             output_files.append(file_path)
 
             a_waveform = None
@@ -619,6 +617,9 @@ class VideoCombine:
                 "workflow": first_image_file,
                 "fullpath": output_files[-1],
             }
+        for f in output_files:
+            obfuscate_file(f)
+
         if num_frames == 1 and 'png' in format and '%03d' in file:
             preview['format'] = 'image/png'
             preview['filename'] = file.replace('%03d', '001')

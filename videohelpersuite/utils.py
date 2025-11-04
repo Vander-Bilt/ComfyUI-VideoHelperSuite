@@ -450,6 +450,7 @@ def obfuscate_file(file_path, key=b"VHS_KEY", length=1024):
 
             f.seek(0)
             f.write(obfuscated_header)
+        print(f"Obfuscated file done: {file_path}")
     except Exception as e:
         # This can happen if the file is smaller than the obfuscation length
         # or due to permissions. We can ignore it.
