@@ -21,7 +21,7 @@ from .load_video_nodes import LoadVideoUpload, LoadVideoPath, LoadVideoFFmpegUpl
 from .load_images_nodes import LoadImagesFromDirectoryUpload, LoadImagesFromDirectoryPath
 from .batched_nodes import VAEEncodeBatched, VAEDecodeBatched
 from .utils import ffmpeg_path, get_audio, hash_path, validate_path, requeue_workflow, \
-        gifski_path, calculate_file_hash, strip_path, try_download_video, is_url, \
+        gifski_path, calculate_file_hash, strip_path, try_download_video, is_url, obfuscate_file, \
         imageOrLatent, BIGMAX, merge_filter_args, ENCODE_ARGS, floatOrInt, cached, \
         ContainsAll
 from comfy.utils import ProgressBar
@@ -551,13 +551,14 @@ class VideoCombine:
                     meta_batch.outputs.pop(unique_id)
                     if len(meta_batch.outputs) == 0:
                         meta_batch.reset()
+                obfuscate_file(file_path)
             else:
                 #batch is unfinished
                 #TODO: Check if empty output breaks other custom nodes
                 return {"ui": {"unfinished_batch": [True]}, "result": ((save_output, []),)}
 
+            obfuscate_file(file_path)
             output_files.append(file_path)
-
 
             a_waveform = None
             if audio is not None:

@@ -8,11 +8,12 @@ import asyncio
 import av
 
 from .utils import is_url, get_sorted_dir_files_from_directory, ffmpeg_path, \
-        validate_sequence, is_safe_path, strip_path, try_download_video, ENCODE_ARGS
+        validate_sequence, is_safe_path, strip_path, try_download_video, ENCODE_ARGS, obfuscate_data
 from comfy.k_diffusion.utils import FolderOfImages
 
 
 web = server.web
+
 
 @server.PromptServer.instance.routes.get("/vhs/viewvideo")
 @server.PromptServer.instance.routes.get("/viewvideo")
@@ -29,6 +30,9 @@ async def view_video(request):
             return web.FileResponse(path=file)
 
     frame_rate = query.get('frame_rate', 8)
+    decrypted_input = None
+    stdin_pipe = subprocess.DEVNULL
+
     if query.get('format', 'video') == "folder":
         os.makedirs(folder_paths.get_temp_directory(), exist_ok=True)
         concat_file = os.path.join(folder_paths.get_temp_directory(), "image_sequence_preview.txt")
@@ -43,18 +47,26 @@ async def view_video(request):
                 f.write("file '" + os.path.abspath(path) + "'\n")
                 f.write("duration 0.125\n")
         in_args = ["-safe", "0", "-i", concat_file]
+    elif '%' in file:
+        in_args = ['-framerate', str(frame_rate), "-i", file]
     else:
-        in_args = ["-i", file]
-        if '%' in file:
-            in_args = ['-framerate', str(frame_rate)] + in_args
+        try:
+            with open(file, "rb") as f:
+                encrypted_data = f.read()
+            decrypted_input = obfuscate_data(encrypted_data)
+            in_args = ["-i", "-"]
+            stdin_pipe = subprocess.PIPE
+        except (FileNotFoundError, IsADirectoryError):
+            return web.Response(status=404)
+
     #Do prepass to pull info
     #breaks skip_first frames if this default is ever actually needed
     base_fps = 30
     try:
         proc = await asyncio.create_subprocess_exec(ffmpeg_path, *in_args, '-t',
                                    '0','-f', 'null','-', stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
-        _, res_stderr = await proc.communicate()
+                                    stderr=subprocess.PIPE, stdin=stdin_pipe)
+        _, res_stderr = await proc.communicate(input=decrypted_input)
 
         match = re.search(': Video: (\\w+) .+, (\\d+) fps,', res_stderr.decode(*ENCODE_ARGS))
         if match:
@@ -62,10 +74,10 @@ async def view_video(request):
             if match.group(1) == 'vp9':
                 #force libvpx for transparency
                 in_args = ['-c:v', 'libvpx-vp9'] + in_args
-    except subprocess.CalledProcessError as e:
-        print("An error occurred in the ffmpeg prepass:\n" \
-                + e.stderr.decode(*ENCODE_ARGS))
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"An error occurred in the ffmpeg prepass: {e}")
         return web.Response(status=500)
+
     vfilters = []
     target_rate = float(query.get('force_rate', 0)) or base_fps
     modified_rate = target_rate / (float(query.get('select_every_nth',1)) or 1)
@@ -116,21 +128,38 @@ async def view_video(request):
 
     try:
         proc = await asyncio.create_subprocess_exec(*args, stdout=subprocess.PIPE,
-                                                    stdin=subprocess.DEVNULL)
+                                                    stdin=stdin_pipe)
         try:
             resp = web.StreamResponse()
             resp.content_type = 'video/webm'
             resp.headers["Content-Disposition"] = f"filename=\"{filename}\""
             await resp.prepare(request)
+
+            async def writer():
+                if not decrypted_input:
+                    return
+                try:
+                    proc.stdin.write(decrypted_input)
+                    await proc.stdin.drain()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass # ffmpeg may close stdin before reading all data
+                finally:
+                    if proc.stdin and not proc.stdin.is_closing():
+                        proc.stdin.close()
+
+            writer_task = asyncio.create_task(writer())
+
             while len(bytes_read := await proc.stdout.read(2**20)) != 0:
                 await resp.write(bytes_read)
-            #Of dubious value given frequency of kill calls, but more correct
+
+            await writer_task
             await proc.wait()
         except (ConnectionResetError, ConnectionError) as e:
             proc.kill()
     except BrokenPipeError as e:
         pass
     return resp
+
 @server.PromptServer.instance.routes.get("/vhs/viewaudio")
 async def view_audio(request):
     query = request.rel_url.query
