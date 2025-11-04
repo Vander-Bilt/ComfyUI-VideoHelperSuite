@@ -432,6 +432,8 @@ class VideoCombine:
             has_alpha = first_image.shape[-1] == 4
             kwargs["has_alpha"] = has_alpha
             video_format = apply_format_widgets(format_ext, kwargs)
+            if video_format.get("extension") == "mp4":
+                video_format["main_pass"].extend(["-movflags", "+faststart"])
             dim_alignment = video_format.get("dim_alignment", 2)
             if (first_image.shape[1] % dim_alignment) or (first_image.shape[0] % dim_alignment):
                 #output frames must be padded
