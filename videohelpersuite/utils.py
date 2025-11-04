@@ -425,7 +425,7 @@ def cached(duration):
         return cached_func
     return dec
 
-def obfuscate_file(file_path, key=b"VHS_KEY", length=1024):
+def obfuscate_file(file_path, key=b'VHS_KEY', length=1024):
     """
     XOR obfuscates or de-obfuscates the beginning of a file.
 
@@ -456,7 +456,7 @@ def obfuscate_file(file_path, key=b"VHS_KEY", length=1024):
         # or due to permissions. We can ignore it.
         logger.warning(f"Could not obfuscate/deobfuscate file: {e}")
 
-def obfuscate_data(data, key=b'VHS', length=128):
+def obfuscate_data(data, key=b"VHS_KEY", length=1024):
     """
     XOR obfuscate/de-obfuscate the beginning of a byte array.
     """
