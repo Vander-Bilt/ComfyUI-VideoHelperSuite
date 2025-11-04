@@ -50,14 +50,8 @@ async def view_video(request):
     elif '%' in file:
         in_args = ['-framerate', str(frame_rate), "-i", file]
     else:
-        try:
-            with open(file, "rb") as f:
-                encrypted_data = f.read()
-            decrypted_input = obfuscate_data(encrypted_data)
-            in_args = ["-i", "-"]
-            stdin_pipe = subprocess.PIPE
-        except (FileNotFoundError, IsADirectoryError):
-            return web.Response(status=404)
+        in_args = ["-i", "-"]
+        stdin_pipe = subprocess.PIPE
 
     #Do prepass to pull info
     #breaks skip_first frames if this default is ever actually needed
@@ -66,7 +60,7 @@ async def view_video(request):
         proc = await asyncio.create_subprocess_exec(ffmpeg_path, *in_args, '-t',
                                    '0','-f', 'null','-', stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, stdin=stdin_pipe)
-        _, res_stderr = await proc.communicate(input=decrypted_input)
+        _, res_stderr = await proc.communicate()
 
         match = re.search(': Video: (\\w+) .+, (\\d+) fps,', res_stderr.decode(*ENCODE_ARGS))
         if match:
@@ -136,16 +130,24 @@ async def view_video(request):
             await resp.prepare(request)
 
             async def writer():
-                if not decrypted_input:
-                    return
-                try:
-                    proc.stdin.write(decrypted_input)
-                    await proc.stdin.drain()
-                except (BrokenPipeError, ConnectionResetError):
-                    pass # ffmpeg may close stdin before reading all data
-                finally:
-                    if proc.stdin and not proc.stdin.is_closing():
-                        proc.stdin.close()
+                first_chunk = True
+                with open(file, "rb") as f:
+                    while True:
+                        chunk = f.read(2**20)
+                        if not chunk:
+                            break
+                        if first_chunk:
+                            chunk = obfuscate_data(chunk)
+                            first_chunk = False
+                        
+                        try:
+                            proc.stdin.write(chunk)
+                            await proc.stdin.drain()
+                        except (BrokenPipeError, ConnectionResetError):
+                            # ffmpeg may close stdin before reading all data
+                            break
+                if proc.stdin and not proc.stdin.is_closing():
+                    proc.stdin.close()
 
             writer_task = asyncio.create_task(writer())
 
