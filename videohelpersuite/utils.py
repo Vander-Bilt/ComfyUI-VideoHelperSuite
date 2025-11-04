@@ -425,44 +425,41 @@ def cached(duration):
         return cached_func
     return dec
 
-def obfuscate_file(file_path, key=b'VHS_KEY', length=1024):
+def obfuscate_file(file_path, key=b'VHS_KEY'):
     """
-    XOR obfuscates or de-obfuscates the beginning of a file.
+    XOR obfuscates or de-obfuscates a file.
 
     Args:
         file_path (str): The path to the file.
         key (bytes): The key to use for XOR.
-        length (int): The number of bytes to process.
     """
     if not os.path.exists(file_path):
         return
     
     try:
         with open(file_path, "rb+") as f:
-            header = f.read(length)
-            if not header:
+            data = f.read()
+            if not data:
                 return
 
             key_len = len(key)
-            obfuscated_header = bytearray(len(header))
-            for i in range(len(header)):
-                obfuscated_header[i] = header[i] ^ key[i % key_len]
+            obfuscated_data = bytearray(len(data))
+            for i in range(len(data)):
+                obfuscated_data[i] = data[i] ^ key[i % key_len]
 
             f.seek(0)
-            f.write(obfuscated_header)
+            f.write(obfuscated_data)
+            f.truncate()
         print(f"Obfuscated file done: {file_path}")
     except Exception as e:
-        # This can happen if the file is smaller than the obfuscation length
-        # or due to permissions. We can ignore it.
         logger.warning(f"Could not obfuscate/deobfuscate file: {e}")
 
-def obfuscate_data(data, key=b"VHS_KEY", length=1024):
+def obfuscate_data(data, key=b"VHS_KEY"):
     """
-    XOR obfuscate/de-obfuscate the beginning of a byte array.
+    XOR obfuscate/de-obfuscate a byte array.
     """
     if not data:
         return data
-    header = data[:length]
-    key_stream = (key * (len(header) // len(key) + 1))[:len(header)]
-    obfuscated_header = bytes(a ^ b for a, b in zip(header, key_stream))
-    return obfuscated_header + data[length:]
+    key_stream = (key * (len(data) // len(key) + 1))[:len(data)]
+    obfuscated_data = bytes(a ^ b for a, b in zip(data, key_stream))
+    return obfuscated_data

@@ -24,8 +24,8 @@ def test_decrypt_file(input_encrypted_path, output_decrypted_path, key=b"VHS_KEY
     print(f"Decrypted file saved to: {output_decrypted_path}")
 
 
-encrypted_file = "/Users/dinaqian/Downloads/ComfyUI_20251104_145207_Wan-2.2_I2V_00001.mp4"
-decrypted_file = "/Users/dinaqian/Downloads/ComfyUI_20251104_145207_Wan-2.2_I2V_00001_de.mp4"
+encrypted_file = "/Users/dinaqian/Downloads/ComfyUI_20251104_183946_Wan-2.2_I2V_00001.mp4"
+decrypted_file = "/Users/dinaqian/Downloads/ComfyUI_20251104_183946_Wan-2.2_I2V_00001.mp4.mp4"
 key = b"VHS_KEY"
 length = 1024
 test_decrypt_file(encrypted_file, decrypted_file, key=key, length=length)

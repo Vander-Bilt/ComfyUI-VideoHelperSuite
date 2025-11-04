@@ -14,7 +14,6 @@ from comfy.k_diffusion.utils import FolderOfImages
 
 web = server.web
 
-
 @server.PromptServer.instance.routes.get("/vhs/viewvideo")
 @server.PromptServer.instance.routes.get("/viewvideo")
 async def view_video(request):
@@ -24,143 +23,21 @@ async def view_video(request):
         return path_res
     file, filename, output_dir = path_res
 
-    if ffmpeg_path is None:
-        #Don't just return file, that provides  arbitrary read access to any file
-        if is_safe_path(output_dir, strict=True):
-            return web.FileResponse(path=file)
+    # Determine content type from file extension
+    file_extension = os.path.splitext(filename)[1].lower()
+    mime_types = {
+        ".webm": "video/webm",
+        ".mp4": "video/mp4",
+    }
+    content_type = mime_types.get(file_extension, "application/octet-stream")
 
-    frame_rate = query.get('frame_rate', 8)
-    decrypted_input = None
-    stdin_pipe = subprocess.DEVNULL
+    with open(file, "rb") as f:
+        video_data = f.read()
+    
+    decrypted_data = obfuscate_data(video_data)
 
-    if query.get('format', 'video') == "folder":
-        os.makedirs(folder_paths.get_temp_directory(), exist_ok=True)
-        concat_file = os.path.join(folder_paths.get_temp_directory(), "image_sequence_preview.txt")
-        skip_first_images = int(query.get('skip_first_images', 0))
-        select_every_nth = int(query.get('select_every_nth', 1)) or 1
-        valid_images = get_sorted_dir_files_from_directory(file, skip_first_images, select_every_nth, FolderOfImages.IMG_EXTENSIONS)
-        if len(valid_images) == 0:
-            return web.Response(status=204)
-        with open(concat_file, "w") as f:
-            f.write("ffconcat version 1.0\n")
-            for path in valid_images:
-                f.write("file '" + os.path.abspath(path) + "'\n")
-                f.write("duration 0.125\n")
-        in_args = ["-safe", "0", "-i", concat_file]
-    elif '%' in file:
-        in_args = ['-framerate', str(frame_rate), "-i", file]
-    else:
-        in_args = ["-i", "-"]
-        stdin_pipe = subprocess.PIPE
+    return web.Response(body=decrypted_data, content_type=content_type)
 
-    #Do prepass to pull info
-    #breaks skip_first frames if this default is ever actually needed
-    base_fps = 30
-    try:
-        proc = await asyncio.create_subprocess_exec(ffmpeg_path, *in_args, '-t',
-                                   '0','-f', 'null','-', stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, stdin=stdin_pipe)
-        _, res_stderr = await proc.communicate()
-
-        match = re.search(': Video: (\\w+) .+, (\\d+) fps,', res_stderr.decode(*ENCODE_ARGS))
-        if match:
-            base_fps = float(match.group(2))
-            if match.group(1) == 'vp9':
-                #force libvpx for transparency
-                in_args = ['-c:v', 'libvpx-vp9'] + in_args
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"An error occurred in the ffmpeg prepass: {e}")
-        return web.Response(status=500)
-
-    vfilters = []
-    target_rate = float(query.get('force_rate', 0)) or base_fps
-    modified_rate = target_rate / (float(query.get('select_every_nth',1)) or 1)
-    start_time = 0
-    if 'start_time' in query:
-        start_time = float(query['start_time'])
-    elif float(query.get('skip_first_frames', 0)) > 0:
-        start_time = float(query.get('skip_first_frames'))/target_rate
-        if start_time > 1/modified_rate:
-            start_time += 1/modified_rate
-    if start_time > 0:
-        if start_time > 4:
-            post_seek = ['-ss', '4']
-            pre_seek = ['-ss', str(start_time - 4)]
-        else:
-            post_seek = ['-ss', str(start_time)]
-            pre_seek = []
-    else:
-        pre_seek = []
-        post_seek = []
-
-    args = [ffmpeg_path, "-v", "error"] + pre_seek + in_args + post_seek
-    if target_rate != 0:
-        args += ['-r', str(modified_rate)]
-    if query.get('force_size','Disabled') != "Disabled":
-        size = query['force_size'].split('x')
-        if size[0] == '?' or size[1] == '?':
-            size[0] = "-2" if size[0] == '?' else f"'min({size[0]},iw)'"
-            size[1] = "-2" if size[1] == '?' else f"'min({size[1]},ih)'"
-        else:
-            #Aspect ratio is likely changed. A more complex command is required
-            #to crop the output to the new aspect ratio
-            ar = float(size[0])/float(size[1])
-            vfilters.append(f"crop=if(gt({ar}\\,a)\\,iw\\,ih*{ar}):if(gt({ar}\\,a)\\,iw/{ar}\\,ih)")
-        size = ':'.join(size)
-        vfilters.append(f"scale={size}")
-    if len(vfilters) > 0:
-        args += ["-vf", ",".join(vfilters)]
-    if float(query.get('frame_load_cap', 0)) > 0:
-        args += ["-frames:v", query['frame_load_cap'].split('.')[0]]
-    #TODO:reconsider adding high frame cap/setting default frame cap on node
-    if query.get('deadline', 'realtime') == 'good':
-        deadline = 'good'
-    else:
-        deadline = 'realtime'
-
-    args += ['-c:v', 'libvpx-vp9','-deadline', deadline, '-cpu-used', '8', '-f', 'webm', '-']
-
-    try:
-        proc = await asyncio.create_subprocess_exec(*args, stdout=subprocess.PIPE,
-                                                    stdin=stdin_pipe)
-        try:
-            resp = web.StreamResponse()
-            resp.content_type = 'video/webm'
-            resp.headers["Content-Disposition"] = f"filename=\"{filename}\""
-            await resp.prepare(request)
-
-            async def writer():
-                first_chunk = True
-                with open(file, "rb") as f:
-                    while True:
-                        chunk = f.read(2**20)
-                        if not chunk:
-                            break
-                        if first_chunk:
-                            chunk = obfuscate_data(chunk)
-                            first_chunk = False
-                        
-                        try:
-                            proc.stdin.write(chunk)
-                            await proc.stdin.drain()
-                        except (BrokenPipeError, ConnectionResetError):
-                            # ffmpeg may close stdin before reading all data
-                            break
-                if proc.stdin and not proc.stdin.is_closing():
-                    proc.stdin.close()
-
-            writer_task = asyncio.create_task(writer())
-
-            while len(bytes_read := await proc.stdout.read(2**20)) != 0:
-                await resp.write(bytes_read)
-
-            await writer_task
-            await proc.wait()
-        except (ConnectionResetError, ConnectionError) as e:
-            proc.kill()
-    except BrokenPipeError as e:
-        pass
-    return resp
 
 @server.PromptServer.instance.routes.get("/vhs/viewaudio")
 async def view_audio(request):
