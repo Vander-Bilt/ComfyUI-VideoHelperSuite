@@ -1043,23 +1043,19 @@ function addVideoPreview(nodeType, isInput=true) {
                 || params.format == 'folder') {
 
                 this.videoEl.autoplay = !this.value.paused && !this.value.hidden;
-                if (!advp) {
-                    this.videoEl.src = api.apiURL('/view?' + new URLSearchParams(params));
-                } else {
-                    let target_width = (previewNode.size[0]-20)*2 || 256;
-                    let minWidth = app.ui.settings.getSettingValue("VHS.AdvancedPreviewsMinWidth")
-                    if (target_width < minWidth) {
-                        target_width = minWidth
-                    }
-                    if (!params.custom_width || !params.custom_height) {
-                        params.force_size = target_width+"x?"
-                    } else {
-                        let ar = params.custom_width/params.custom_height
-                        params.force_size = target_width+"x"+(target_width/ar)
-                    }
-                    params.deadline = app.ui.settings.getSettingValue("VHS.AdvancedPreviewsDeadline")
-                    this.videoEl.src = api.apiURL('/vhs/viewvideo?' + new URLSearchParams(params));
+                let target_width = (previewNode.size[0]-20)*2 || 256;
+                let minWidth = app.ui.settings.getSettingValue("VHS.AdvancedPreviewsMinWidth")
+                if (target_width < minWidth) {
+                    target_width = minWidth
                 }
+                if (!params.custom_width || !params.custom_height) {
+                    params.force_size = target_width+"x?"
+                } else {
+                    let ar = params.custom_width/params.custom_height
+                    params.force_size = target_width+"x"+(target_width/ar)
+                }
+                params.deadline = app.ui.settings.getSettingValue("VHS.AdvancedPreviewsDeadline")
+                this.videoEl.src = api.apiURL('/vhs/viewvideo?' + new URLSearchParams(params));
                 this.videoEl.hidden = false;
                 this.imgEl.hidden = true;
             } else if (params.format?.split('/')[0] == 'image'){
