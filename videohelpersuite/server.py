@@ -37,7 +37,13 @@ async def view_video(request):
     
     decrypted_data = obfuscate_data(video_data)
 
-    return web.Response(body=decrypted_data, content_type=content_type)
+    # set headers={"Accept-Ranges": "bytes"}
+    headers = {"Accept-Ranges": "bytes"}
+
+    # set: mime_type = 'video/mp4'
+    mime_type = 'video/mp4'
+
+    return web.Response(body=decrypted_data, headers=headers, content_type=mime_type)
 
 
 @server.PromptServer.instance.routes.get("/vhs/viewaudio")
