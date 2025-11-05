@@ -17,6 +17,7 @@ web = server.web
 @server.PromptServer.instance.routes.get("/vhs/viewvideo")
 @server.PromptServer.instance.routes.get("/viewvideo")
 async def view_video(request):
+    print("We are at view_video.")
     query = request.rel_url.query
     path_res = await resolve_path(query)
     if isinstance(path_res, web.Response):
