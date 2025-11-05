@@ -25,12 +25,12 @@ async def view_video(request):
     file, filename, output_dir = path_res
 
     # Determine content type from file extension
-    file_extension = os.path.splitext(filename)[1].lower()
-    mime_types = {
-        ".webm": "video/webm",
-        ".mp4": "video/mp4",
-    }
-    content_type = mime_types.get(file_extension, "application/octet-stream")
+    # file_extension = os.path.splitext(filename)[1].lower()
+    # mime_types = {
+    #     ".webm": "video/webm",
+    #     ".mp4": "video/mp4",
+    # }
+    # content_type = mime_types.get(file_extension, "application/octet-stream")
 
     with open(file, "rb") as f:
         video_data = f.read()
