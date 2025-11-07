@@ -10,7 +10,7 @@ class VAEDecodeBatched:
             "required": {
                 "samples": ("LATENT", ),
                 "vae": ("VAE", ),
-                "per_batch": ("INT", {"default": 16, "min": 1})
+                "per_batch": ("INT", {"default": 2, "min": 1})
                 }
             }
     
