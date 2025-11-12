@@ -251,8 +251,6 @@ class VideoCombine:
             result = response.json()
             print(f"✅ 上传成功!")
             print(f"原图URL: {result['url']}")
-            print(f"缩略图URL: {result['thumb']}")
-            print(f"文件大小: {result['size']} bytes")
             # return result
         else:
             print(f"❌ 上传失败: {response.text}")
