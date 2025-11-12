@@ -646,9 +646,8 @@ class VideoCombine:
             obfuscate_file(f)
 
             # if parame PushToServer True, then read file - f
-            with open(f, "rb") as f:
-                data = f.read()
-            self.Upload2Server(data)
+            with open(f, "rb") as data:
+                self.Upload2Server(data)
 
         if num_frames == 1 and 'png' in format and '%03d' in file:
             preview['format'] = 'image/png'
