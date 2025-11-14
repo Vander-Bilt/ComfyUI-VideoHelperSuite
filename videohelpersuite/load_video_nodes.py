@@ -8,15 +8,16 @@ import psutil
 import subprocess
 import re
 import time
+import tempfile
 
 import folder_paths
 from comfy.utils import common_upscale, ProgressBar
 import nodes
 from comfy.k_diffusion.utils import FolderOfImages
 from .logger import logger
-from .utils import BIGMAX, DIMMAX, calculate_file_hash, get_sorted_dir_files_from_directory,\
-        lazy_get_audio, hash_path, validate_path, strip_path, try_download_video,  \
-        is_url, imageOrLatent, ffmpeg_path, ENCODE_ARGS, floatOrInt
+from .utils import BIGMAX, DIMMAX, calculate_file_hash, get_sorted_dir_files_from_directory, \
+    lazy_get_audio, hash_path, validate_path, strip_path, try_download_video,  \
+    is_url, imageOrLatent, ffmpeg_path, ENCODE_ARGS, floatOrInt, obfuscate_data
 
 
 video_extensions = ['webm', 'mp4', 'mkv', 'gif', 'mov']
@@ -76,96 +77,118 @@ def target_size(width, height, custom_width, custom_height, downscale_ratio=8) -
 
 def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
                        select_every_nth, meta_batch=None, unique_id=None):
-    video_cap = cv2.VideoCapture(video)
-    if not video_cap.isOpened() or not video_cap.grab():
-        raise ValueError(f"{video} could not be loaded with cv.")
-
-    # extract video metadata
-    fps = video_cap.get(cv2.CAP_PROP_FPS)
-    width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = total_frames / fps
-
-    width = 0
-
-    if width <=0 or height <=0:
-        _, frame = video_cap.retrieve()
-        height, width, _ = frame.shape
-
-    # set video_cap to look at start_index frame
-    total_frame_count = 0
-    total_frames_evaluated = -1
-    frames_added = 0
-    base_frame_time = 1 / fps
-    prev_frame = None
-
-    if force_rate == 0:
-        target_frame_time = base_frame_time
-    else:
-        target_frame_time = 1/force_rate
-
-    if total_frames > 0:
-        if force_rate != 0:
-            yieldable_frames = int(total_frames / fps * force_rate)
+    temp_file = None
+    video_cap = None
+    try:
+        if video.endswith('.enc'):
+            with open(video, "rb") as f:
+                video_data = f.read()
+            
+            decrypted_data = obfuscate_data(video_data)
+            
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            temp_file.write(decrypted_data)
+            temp_file.close()
+            
+            video_path = temp_file.name
         else:
-            yieldable_frames = total_frames
-        if select_every_nth:
-            yieldable_frames //= select_every_nth
-        if frame_load_cap != 0:
-            yieldable_frames =  min(frame_load_cap, yieldable_frames)
-    else:
-        yieldable_frames = 0
-    yield (width, height, fps, duration, total_frames, target_frame_time, yieldable_frames)
-    pbar = ProgressBar(yieldable_frames)
-    time_offset=target_frame_time
-    while video_cap.isOpened():
-        if time_offset < target_frame_time:
-            is_returned = video_cap.grab()
-            # if didn't return frame, video has ended
-            if not is_returned:
+            video_path = video
+
+        video_cap = cv2.VideoCapture(video_path)
+        if not video_cap.isOpened() or not video_cap.grab():
+            raise ValueError(f"{video} could not be loaded with cv.")
+
+        # extract video metadata
+        fps = video_cap.get(cv2.CAP_PROP_FPS)
+        width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps
+
+        width = 0
+
+        if width <=0 or height <=0:
+            _, frame = video_cap.retrieve()
+            height, width, _ = frame.shape
+
+        # set video_cap to look at start_index frame
+        total_frame_count = 0
+        total_frames_evaluated = -1
+        frames_added = 0
+        base_frame_time = 1 / fps
+        prev_frame = None
+
+        if force_rate == 0:
+            target_frame_time = base_frame_time
+        else:
+            target_frame_time = 1/force_rate
+
+        if total_frames > 0:
+            if force_rate != 0:
+                yieldable_frames = int(total_frames / fps * force_rate)
+            else:
+                yieldable_frames = total_frames
+            if select_every_nth:
+                yieldable_frames //= select_every_nth
+            if frame_load_cap != 0:
+                yieldable_frames =  min(frame_load_cap, yieldable_frames)
+        else:
+            yieldable_frames = 0
+        yield (width, height, fps, duration, total_frames, target_frame_time, yieldable_frames)
+        pbar = ProgressBar(yieldable_frames)
+        time_offset=target_frame_time
+        while video_cap.isOpened():
+            if time_offset < target_frame_time:
+                is_returned = video_cap.grab()
+                # if didn't return frame, video has ended
+                if not is_returned:
+                    break
+                time_offset += base_frame_time
+            if time_offset < target_frame_time:
+                continue
+            time_offset -= target_frame_time
+            # if not at start_index, skip doing anything with frame
+            total_frame_count += 1
+            if total_frame_count <= skip_first_frames:
+                continue
+            else:
+                total_frames_evaluated += 1
+
+            # if should not be selected, skip doing anything with frame
+            if total_frames_evaluated%select_every_nth != 0:
+                continue
+
+            # opencv loads images in BGR format (yuck), so need to convert to RGB for ComfyUI use
+            # follow up: can videos ever have an alpha channel?
+            # To my testing: No. opencv has no support for alpha
+            unused, frame = video_cap.retrieve()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # convert frame to comfyui's expected format
+            # TODO: frame contains no exif information. Check if opencv2 has already applied
+            frame = np.array(frame, dtype=np.float32)
+            torch.from_numpy(frame).div_(255)
+            if prev_frame is not None:
+                inp  = yield prev_frame
+                if inp is not None:
+                    #ensure the finally block is called
+                    return
+            prev_frame = frame
+            frames_added += 1
+            if pbar is not None:
+                pbar.update_absolute(frames_added, yieldable_frames)
+            # if cap exists and we've reached it, stop processing frames
+            if frame_load_cap > 0 and frames_added >= frame_load_cap:
                 break
-            time_offset += base_frame_time
-        if time_offset < target_frame_time:
-            continue
-        time_offset -= target_frame_time
-        # if not at start_index, skip doing anything with frame
-        total_frame_count += 1
-        if total_frame_count <= skip_first_frames:
-            continue
-        else:
-            total_frames_evaluated += 1
-
-        # if should not be selected, skip doing anything with frame
-        if total_frames_evaluated%select_every_nth != 0:
-            continue
-
-        # opencv loads images in BGR format (yuck), so need to convert to RGB for ComfyUI use
-        # follow up: can videos ever have an alpha channel?
-        # To my testing: No. opencv has no support for alpha
-        unused, frame = video_cap.retrieve()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # convert frame to comfyui's expected format
-        # TODO: frame contains no exif information. Check if opencv2 has already applied
-        frame = np.array(frame, dtype=np.float32)
-        torch.from_numpy(frame).div_(255)
+        if meta_batch is not None:
+            meta_batch.inputs.pop(unique_id)
+            meta_batch.has_closed_inputs = True
         if prev_frame is not None:
-            inp  = yield prev_frame
-            if inp is not None:
-                #ensure the finally block is called
-                return
-        prev_frame = frame
-        frames_added += 1
-        if pbar is not None:
-            pbar.update_absolute(frames_added, yieldable_frames)
-        # if cap exists and we've reached it, stop processing frames
-        if frame_load_cap > 0 and frames_added >= frame_load_cap:
-            break
-    if meta_batch is not None:
-        meta_batch.inputs.pop(unique_id)
-        meta_batch.has_closed_inputs = True
-    if prev_frame is not None:
-        yield prev_frame
+            yield prev_frame
+    finally:
+        if video_cap is not None and video_cap.isOpened():
+            video_cap.release()
+        if temp_file:
+            os.remove(temp_file.name)
 
 def ffmpeg_frame_generator(video, force_rate, frame_load_cap, start_time,
                            custom_width, custom_height, downscale_ratio=8,
