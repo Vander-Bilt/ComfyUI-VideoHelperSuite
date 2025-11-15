@@ -10,6 +10,13 @@ import re
 import time
 import tempfile
 
+from cryptography.fernet import Fernet
+# --- Define your encryption key securely (example only, see notes below) ---
+# In a real application, do NOT hardcode the key. Store it securely (e.g., environment variable, secure config file).
+# Example of generating a key: print(Fernet.generate_key())
+ENCRYPTION_KEY = b'0cZ56f7w3ejcPODA6yC1E2iKi3gOog8ROrT-bRfesG8=' # Replace with your actual key
+# --- End of key definition ---
+
 import folder_paths
 from comfy.utils import common_upscale, ProgressBar
 import nodes
@@ -82,11 +89,18 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
     try:
         print(f"Loading video: {video}")
         if video.endswith('.enc'):
-            with open(video, "rb") as f:
-                video_data = f.read()
+
+            with open(video, 'rb') as f:
+                encrypted_data = f.read()
+                            
+            fernet = Fernet(ENCRYPTION_KEY)
+            decrypted_data = fernet.decrypt(encrypted_data)
+
+            # with open(video, "rb") as f:
+            #     video_data = f.read()
             
-            decrypted_data = obfuscate_data(video_data)
-            #dir=os.path.dirname(video.replace('input','output')), 
+            # decrypted_data = obfuscate_data(video_data)
+
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             temp_file.write(decrypted_data)
             temp_file.close()
@@ -196,8 +210,8 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
     finally:
         if video_cap is not None and video_cap.isOpened():
             video_cap.release()
-        # if temp_file:
-        #     os.remove(temp_file.name)
+        if temp_file:
+            os.remove(temp_file.name)
 
 def ffmpeg_frame_generator(video, force_rate, frame_load_cap, start_time,
                            custom_width, custom_height, downscale_ratio=8,
