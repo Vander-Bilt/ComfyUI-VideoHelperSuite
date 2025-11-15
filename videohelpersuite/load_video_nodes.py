@@ -80,6 +80,7 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
     temp_file = None
     video_cap = None
     try:
+        print(f"Loading video: {video}")
         if video.endswith('.enc'):
             with open(video, "rb") as f:
                 video_data = f.read()
@@ -93,10 +94,18 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
             video_path = temp_file.name
         else:
             video_path = video
-
+        
+        print(f"Video path: {video_path}")
+        if temp_file is None:
+            print(f"Temporary file: None")
+        
         video_cap = cv2.VideoCapture(video_path)
         if not video_cap.isOpened() or not video_cap.grab():
-            raise ValueError(f"{video} could not be loaded with cv.")
+            if temp_file and not os.path.exists(temp_file.name):
+                raise ValueError(f"Temporary file {temp_file.name} not found.")
+            if temp_file and os.path.getsize(temp_file.name) == 0:
+                raise ValueError(f"Temporary file {temp_file.name} is empty.")
+            raise ValueError(f"{video_path} could not be loaded with cv.")
 
         # extract video metadata
         fps = video_cap.get(cv2.CAP_PROP_FPS)
