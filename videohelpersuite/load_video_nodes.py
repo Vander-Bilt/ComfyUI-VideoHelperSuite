@@ -87,7 +87,7 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
             
             decrypted_data = obfuscate_data(video_data)
             
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            temp_file = tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(video.replace('input','output')), suffix='.mp4')
             temp_file.write(decrypted_data)
             temp_file.close()
             
