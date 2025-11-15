@@ -86,8 +86,8 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
                 video_data = f.read()
             
             decrypted_data = obfuscate_data(video_data)
-            
-            temp_file = tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(video.replace('input','output')), suffix='.mp4')
+            #dir=os.path.dirname(video.replace('input','output')), 
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             temp_file.write(decrypted_data)
             temp_file.close()
             
@@ -196,8 +196,8 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
     finally:
         if video_cap is not None and video_cap.isOpened():
             video_cap.release()
-        if temp_file:
-            os.remove(temp_file.name)
+        # if temp_file:
+        #     os.remove(temp_file.name)
 
 def ffmpeg_frame_generator(video, force_rate, frame_load_cap, start_time,
                            custom_width, custom_height, downscale_ratio=8,
