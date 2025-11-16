@@ -212,6 +212,7 @@ def cv_frame_generator(video, force_rate, frame_load_cap, skip_first_frames,
             video_cap.release()
         if temp_file:
             os.remove(temp_file.name)
+            print('Temp file removed')
 
 def ffmpeg_frame_generator(video, force_rate, frame_load_cap, start_time,
                            custom_width, custom_height, downscale_ratio=8,
