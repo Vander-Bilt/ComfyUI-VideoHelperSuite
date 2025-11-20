@@ -361,6 +361,7 @@ def resized_cv_frame_gen(custom_width, custom_height, downscale_ratio, **kwargs)
 
 def load_video(meta_batch=None, unique_id=None, memory_limit_mb=None, vae=None,
                generator=resized_cv_frame_gen, format='None',  **kwargs):
+    logger.info(f"VHS: Loading video with kwargs: {kwargs}")
     if 'force_size' in kwargs:
         kwargs.pop('force_size')
         logger.warn("force_size has been removed. Did you reload the webpage after updating?")
@@ -373,6 +374,7 @@ def load_video(meta_batch=None, unique_id=None, memory_limit_mb=None, vae=None,
     if meta_batch is None or unique_id not in meta_batch.inputs:
         gen = generator(meta_batch=meta_batch, unique_id=unique_id, downscale_ratio=downscale_ratio, **kwargs)
         (width, height, fps, duration, total_frames, target_frame_time, yieldable_frames, new_width, new_height, alpha) = next(gen)
+        logger.info(f"VHS: Video info: width={width}, height={height}, fps={fps}, yieldable_frames={yieldable_frames}")
 
         if meta_batch is not None:
             meta_batch.inputs[unique_id] = (gen, width, height, fps, duration, total_frames, target_frame_time, yieldable_frames, new_width, new_height, alpha)
@@ -423,6 +425,7 @@ def load_video(meta_batch=None, unique_id=None, memory_limit_mb=None, vae=None,
     else:
         #Some minor wizardry to eliminate a copy and reduce max memory by a factor of ~2
         images = torch.from_numpy(np.fromiter(gen, np.dtype((np.float32, (new_height, new_width, 4 if alpha else 3)))))
+    logger.info(f"VHS: Loaded {len(images)} frames.")
     if meta_batch is None and memory_limit is not None:
         try:
             next(original_gen)
